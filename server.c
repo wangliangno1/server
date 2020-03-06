@@ -45,69 +45,110 @@ void thread_process(void *arg)
     int dest_count = 0;
     int client_count = 0;
     int source_count = 0;
+	fd_set ser_fdset;   
+	struct timeval tv = {1, 0};
     int fd = *((int *)arg);
+    int max_fd = 1;
+	int ret = 0;
 
     while(1)
     { 
+        FD_ZERO(&ser_fdset); 
+		if(max_fd < 0)
+		{
+			max_fd = 0;
+		}	
+
+        //add client
+        for(client_count = 0; client_count < 32; client_count++)  //用数组定义多个客户端fd
+        {
+            if(client_addr[client_count].status == STATUS_CLIENT_WORK)
+            {
+                FD_SET(client_addr[client_count].sfd,&ser_fdset);
+                if(max_fd < client_addr[client_count].sfd)
+                {
+                    max_fd = client_addr[client_count].sfd;
+                }
+            }
+        }
+		
+		ret = select(max_fd + 1, &ser_fdset, NULL, NULL, &tv);
+		if(ret == 0)
+		{
+			continue;
+		}
+		
         for(client_count = 0; client_count < 32; client_count++)
         {
-            if(client_addr[client_count].status == STATUS_CLIENT_WORK)//当前是否在线
+            if(FD_ISSET(client_addr[client_count].sfd, &ser_fdset))//当前是否在集合中
             {
                 memset(buffer, 0, sizeof(buffer));
-                if(recv(client_addr[client_count].sfd, buffer, 2048, 0) > 0)
+                ret = recv(client_addr[client_count].sfd, buffer, 2048, 0);
+                if (ret == 0 || (ret == SOCKET_ERROR && WSAGetLastError() == WSAECONNRESET))//error
                 {
-                    if(strstr((char *)buffer, "ees#@hands#@") != 0)//每分钟接收心跳数据证明是否在线，加超时判断
-                    {
-                        //ees#@hands#@source_id#@end
-                        memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
-                        strncpy(client_addr[client_count].client_id, &buffer[strlen("ees#@hands#@")], 16);
-                        printf("receved hands msg from:%s\r\n", client_addr[client_count].client_id);
-                    }
-                    else if(strstr((char *)buffer, "ees#@send#@") != 0)
-                    {
-                        //ees#@send#@dest_id#@message#@end
-                        for(source_count = 0; source_count < 32; source_count++)//把数据放在空闲的条目中准备发送
-                        {
-                            if(msg_info[source_count].status == STATUS_CLIENT_IDLE)//判断当前条目是否为空
-                            {
-                                //准备数据
-                                memset(msg_info[source_count].dest_id, 0, sizeof(msg_info[source_count].dest_id));
-                                memset(msg_info[source_count].source_id, 0, sizeof(msg_info[source_count].source_id));
-                                memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
+					//client offline
+					printf("remove offline client fd:%d--->client id:%s\r\n", client_addr[client_count].sfd, client_addr[client_count].client_id);
+					closesocket(client_addr[client_count].sfd);
+					FD_CLR(client_addr[client_count].sfd, &ser_fdset);
+					client_addr[client_count].status == STATUS_CLIENT_IDLE;
+					memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
+					client_addr[client_count].sfd = 0;
+				}
+				else if(strstr((char *)buffer, "test") != 0)
+				{
+					printf("receved test msg:%s\r\n", buffer);
+				}
+				else if(strstr((char *)buffer, "ees#@setid#@") != 0)//set client id
+				{
+					//ees#@setid#@source_id#@end
+					memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
+					strncpy(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")], 16);
+					printf("receved setid:%s\r\n", client_addr[client_count].client_id);
+				}
+				else if(strstr((char *)buffer, "ees#@send#@") != 0)
+				{
+					//ees#@send#@dest_id#@message#@end
+					for(source_count = 0; source_count < 32; source_count++)//把数据放在空闲的条目中准备发送
+					{
+						if(msg_info[source_count].status == STATUS_CLIENT_IDLE)//判断当前条目是否为空
+						{
+							//准备数据
+							memset(msg_info[source_count].dest_id, 0, sizeof(msg_info[source_count].dest_id));
+							memset(msg_info[source_count].source_id, 0, sizeof(msg_info[source_count].source_id));
+							memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
 
-                                strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
-                                strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
-                                strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-                                msg_info[source_count].source_fd = client_addr[client_count].sfd;
-                                for(dest_count = 0; dest_count < 32; dest_count++)
-                                {
-                                    if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[source_count].dest_id) != 0)
-                                    {
-                                        msg_info[source_count].dest_fd = client_addr[dest_count].sfd;
-                                        break;
-                                    }
-                                }
-                                if(dest_count == 32)
-                                {
-                                    //没找到目标地址，放弃此数据
-                                    printf("not found dest\r\n");
-                                    msg_info[source_count].status = STATUS_CLIENT_IDLE;
-                                }
-                                else 
-                                {
-                                    //数据准备就绪
-                                    msg_info[source_count].status = STATUS_CLIENT_SEND;
-                                }
-                                break;
-                            }
-                        }
-                        if(source_count == 32)
-                        {
-                            //缓存条目已满，无法存储更多消息
-                            printf("msg full!\r\n");
-                        }
-                    }
-                }
+							strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
+							strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
+							strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
+							msg_info[source_count].source_fd = client_addr[client_count].sfd;
+							for(dest_count = 0; dest_count < 32; dest_count++)
+							{
+								if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[source_count].dest_id) != 0)
+								{
+									msg_info[source_count].dest_fd = client_addr[dest_count].sfd;
+									break;
+								}
+							}
+							if(dest_count == 32)
+							{
+								//没找到目标地址，放弃此数据
+								printf("not found dest\r\n");
+								msg_info[source_count].status = STATUS_CLIENT_IDLE;
+							}
+							else 
+							{
+								//数据准备就绪
+								msg_info[source_count].status = STATUS_CLIENT_SEND;
+							}
+							break;
+						}
+					}
+					if(source_count == 32)
+					{
+						//缓存条目已满，无法存储更多消息
+						printf("msg full!\r\n");
+					}
+				}
             }
 
             if(msg_info[client_count].status == STATUS_CLIENT_SEND)//判断是否有数据需要发送
@@ -164,10 +205,6 @@ int main(void)
         exit(1);
     }
 
-    /* set NONBLOCK */  
-    flags = fcntl(sockfd, F_GETFL, 0);  
-    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK); 
-
     printf("Waiting for client ...\n");
 
     ret = pthread_create(&thread_id, NULL, (void *)thread_process, &fd);
@@ -188,7 +225,10 @@ int main(void)
             if(client_addr[client_count].status == STATUS_CLIENT_IDLE)
             {
                 fd = accept(sockfd, (struct sockaddr *)&client_addr[client_count].sockaddr, &sin_size);
-                if((fd == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))break;
+                if((fd == -1) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
+				{
+					continue;
+				}
                 else if(fd == -1)
                 {
                     perror("Accept error.");
