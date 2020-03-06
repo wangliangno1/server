@@ -16,7 +16,9 @@
 #define SERVPORT 28335
 #define STATUS_CLIENT_IDLE 0
 #define STATUS_CLIENT_SEND 1
-#define STATUS_CLIENT_WORK 2
+#define STATUS_CLIENT_WORK 2 
+
+#define RECEVE_MAX_COUNT 32*64//最大缓存2048条消息
 
 typedef struct
 {
@@ -30,23 +32,22 @@ typedef struct
 {
     int status;//send data or idle
     int dest_fd;
-    int source_fd;
     char dest_id[16];
     char source_id[16];
     char messages[1024];
 }_msg_info;
 
 _client_addr client_addr[32] = {0};//最大连接32个客户端
-_msg_info msg_info[32] = {0};//最大缓存消息条数
+_msg_info msg_info[RECEVE_MAX_COUNT] = {0};//最大缓存消息条数
 
 char buffer[2048] = {0};
-void thread_process(void *arg)
+void thread_process_read(void *arg)
 {
     int dest_count = 0;
     int client_count = 0;
     int source_count = 0;
 	fd_set ser_fdset;   
-	struct timeval tv = {1, 0};
+	struct timeval tv = {1, 0};//1s timeout
     int fd = *((int *)arg);
     int max_fd = 1;
 	int ret = 0;
@@ -84,11 +85,11 @@ void thread_process(void *arg)
             {
                 memset(buffer, 0, sizeof(buffer));
                 ret = recv(client_addr[client_count].sfd, buffer, 2048, 0);
-                if (ret == 0 || (ret == SOCKET_ERROR && WSAGetLastError() == WSAECONNRESET))//error
+                if(ret == 0 || (ret < 0) && (errno == ECONNRESET))//error
                 {
 					//client offline
 					printf("remove offline client fd:%d--->client id:%s\r\n", client_addr[client_count].sfd, client_addr[client_count].client_id);
-					closesocket(client_addr[client_count].sfd);
+					close(client_addr[client_count].sfd);
 					FD_CLR(client_addr[client_count].sfd, &ser_fdset);
 					client_addr[client_count].status == STATUS_CLIENT_IDLE;
 					memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
@@ -108,7 +109,7 @@ void thread_process(void *arg)
 				else if(strstr((char *)buffer, "ees#@send#@") != 0)
 				{
 					//ees#@send#@dest_id#@message#@end
-					for(source_count = 0; source_count < 32; source_count++)//把数据放在空闲的条目中准备发送
+					for(source_count = 0; source_count < RECEVE_MAX_COUNT; source_count++)//把数据放在空闲的条目中准备发送
 					{
 						if(msg_info[source_count].status == STATUS_CLIENT_IDLE)//判断当前条目是否为空
 						{
@@ -120,50 +121,61 @@ void thread_process(void *arg)
 							strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
 							strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
 							strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-							msg_info[source_count].source_fd = client_addr[client_count].sfd;
-							for(dest_count = 0; dest_count < 32; dest_count++)
-							{
-								if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[source_count].dest_id) != 0)
-								{
-									msg_info[source_count].dest_fd = client_addr[dest_count].sfd;
-									break;
-								}
-							}
-							if(dest_count == 32)
-							{
-								//没找到目标地址，放弃此数据
-								printf("not found dest\r\n");
-								msg_info[source_count].status = STATUS_CLIENT_IDLE;
-							}
-							else 
-							{
-								//数据准备就绪
-								msg_info[source_count].status = STATUS_CLIENT_SEND;
-							}
+							msg_info[source_count].status = STATUS_CLIENT_SEND;
 							break;
 						}
 					}
-					if(source_count == 32)
+					if(source_count == RECEVE_MAX_COUNT)
 					{
 						//缓存条目已满，无法存储更多消息
-						printf("msg full!\r\n");
+						printf("msg buffer full!\r\n");
 					}
 				}
             }
-
-            if(msg_info[client_count].status == STATUS_CLIENT_SEND)//判断是否有数据需要发送
-            {
-                //ees#@send#@source_id#@message#@end
-                memset(buffer, 0, sizeof(buffer));
-                strcpy(buffer, "ees#@send#@");
-                strcat(buffer, msg_info[client_count].source_id);
-                strcat(buffer, "#@");
-                strcat(buffer, msg_info[client_count].messages);
-                send(msg_info[client_count].dest_fd, buffer, strlen(buffer), 0);
-                msg_info[client_count].status = STATUS_CLIENT_IDLE;
-            }
         }		
     }
+}
+
+void thread_process_write(void *arg)
+{
+    int dest_count = 0;
+    int client_count = 0;
+    int source_count = 0;
+    int fd = *((int *)arg);
+	int ret = 0;
+
+    while(1)
+    { 
+        for(client_count = 0; client_count < RECEVE_MAX_COUNT; client_count++)
+        {
+			if(msg_info[client_count].status == STATUS_CLIENT_SEND)//判断是否有数据需要发送
+			{
+				for(dest_count = 0; dest_count < 32; dest_count++)
+				{
+					if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[source_count].dest_id) != 0)
+					{
+						msg_info[source_count].dest_fd = client_addr[dest_count].sfd;
+						//准备要发送的数据
+						//ees#@send#@source_id#@message#@end
+						memset(buffer, 0, sizeof(buffer));
+						strcpy(buffer, "ees#@send#@");
+						strcat(buffer, msg_info[client_count].source_id);
+						strcat(buffer, "#@");
+						strcat(buffer, msg_info[client_count].messages);
+						send(msg_info[client_count].dest_fd, buffer, strlen(buffer), 0);
+						msg_info[client_count].status = STATUS_CLIENT_IDLE;//清除发送标志
+						break;
+					}
+				}
+
+				if(dest_count >= 32)
+				{
+					printf("not found dest\r\n");
+				}						
+			}
+		}
+		sleep(1);
+	}
 }
 
 int main(void)
@@ -176,7 +188,8 @@ int main(void)
     int opt = SO_REUSEADDR;
     int fd = 0;
     int ret = 0;
-    pthread_t thread_id = {0};
+    pthread_t thread_id1 = {0};
+    pthread_t thread_id2 = {0};
 
     sin_size = sizeof(struct sockaddr_in);
 
@@ -207,15 +220,24 @@ int main(void)
 
     printf("Waiting for client ...\n");
 
-    ret = pthread_create(&thread_id, NULL, (void *)thread_process, &fd);
+    ret = pthread_create(&thread_id1, NULL, (void *)thread_process_read, &fd);
     if(ret != 0)
     {
-        perror("pthread_create\n");
+        perror("pthread_create1\n");
         return -1;
     }
-    printf("pthread_create thread status %d\n", ret);
-
-    pthread_detach(thread_id);
+    printf("pthread_create read thread status %d\n", ret);
+	
+    ret = pthread_create(&thread_id2, NULL, (void *)thread_process_write, &fd);
+    if(ret != 0)
+    {
+        perror("pthread_create2\n");
+        return -1;
+    }
+    printf("pthread_create write thread status %d\n", ret);
+    pthread_detach(thread_id1);
+    pthread_detach(thread_id2);
+	
     for(client_count = 0; client_count < 32; client_count++)client_addr[client_count].status = STATUS_CLIENT_IDLE;
 
     while(1)
