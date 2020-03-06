@@ -42,21 +42,21 @@ _msg_info msg_info[32] = {0};//最大缓存消息条数
 char buffer[2048] = {0};
 void thread_process(void *arg)
 {
-	int dest_count = 0;
-	int client_count = 0;
-	int source_count = 0;
+    int dest_count = 0;
+    int client_count = 0;
+    int source_count = 0;
     int fd = *((int *)arg);
 
     while(1)
     { 
 		for(client_count = 0; client_count < 32; client_count++)
         {
-			if(client_addr[client_count].status == STATUS_CLIENT_WORK)//当前是否在线
-			{
-				memset(buffer, 0, sizeof(buffer));
-				if(recv(client_addr[client_count].sfd, buffer, 2048, 0) > 0)
-				{
-					if(strstr((char *)buffer, "ees#@hands#@") != 0)//每分钟接收心跳数据证明是否在线，加超时判断
+            if(client_addr[client_count].status == STATUS_CLIENT_WORK)//当前是否在线
+            {
+                memset(buffer, 0, sizeof(buffer));
+                if(recv(client_addr[client_count].sfd, buffer, 2048, 0) > 0)
+                {
+                    if(strstr((char *)buffer, "ees#@hands#@") != 0)//每分钟接收心跳数据证明是否在线，加超时判断
 					{
 						//ees#@hands#@source_id#@end
 						memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
