@@ -164,11 +164,19 @@ void thread_process_read(void *arg)
                             break;
                         }
                     }
-                    //if(source_count == RECEVE_MAX_COUNT)
-                    //{
+                    if(source_count == RECEVE_MAX_COUNT)
+                    {
                         //缓存条目已满，无法存储更多消息
                         //printf("msg buffer full!\r\n");
-                    //}
+                        //ees#@recvmsg#@source_id#@dest_id#@faild#@end
+                        memset(buffer, 0, sizeof(buffer));
+                        strcpy(buffer, "ees#@recvmsg#@");
+                        strcat(buffer, msg_info[source_count].source_id);
+                        strcat(buffer, "#@");
+                        strcat(buffer, msg_info[source_count].dest_id);
+                        strcat(buffer, "#@faild#@end");
+                        send(client_addr[client_count].sfd, buffer, strlen(buffer), 0);
+                    }
                 }
             }
         }		
