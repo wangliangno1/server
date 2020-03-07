@@ -107,7 +107,7 @@ void thread_process_read(void *arg)
                 if(ret == 0 || (ret < 0) && (errno == ECONNRESET))//error
                 {
                     //client offline
-                    printf("remove offline client fd:%d--->client id:%s\r\n", client_addr[client_count].sfd, client_addr[client_count].client_id);
+                    //printf("remove offline client fd:%d--->client id:%s\r\n", client_addr[client_count].sfd, client_addr[client_count].client_id);
                     close(client_addr[client_count].sfd);
                     FD_CLR(client_addr[client_count].sfd, &ser_fdset);
                     client_addr[client_count].status == STATUS_CLIENT_IDLE;
@@ -117,6 +117,7 @@ void thread_process_read(void *arg)
                 else if(strstr((char *)buffer, "test") != 0)
                 {
                     printf("receved test msg:%s\r\n", buffer);
+                    send(client_addr[client_count].sfd, buffer, strlen(buffer), 0);
                 }
                 else if(strstr((char *)buffer, "ees#@setid#@") != 0)//set client id
                 {
@@ -124,7 +125,13 @@ void thread_process_read(void *arg)
                     memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
                     mGetClientId(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")]);
                     //strncpy(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")], 16);
-                    printf("receved setid:%s\r\n", client_addr[client_count].client_id);
+                    //printf("receved setid:%s\r\n", client_addr[client_count].client_id);
+                    //ees#@getid#@source_id#@end
+                    memset(buffer, 0, sizeof(buffer));
+                    strcpy(buffer, "ees#@getid#@");
+                    strcat(buffer, client_addr[client_count].client_id);
+                    strcat(buffer, "#@ok#@end");
+                    send(client_addr[client_count].sfd, buffer, strlen(buffer), 0);
                 }
                 else if(strstr((char *)buffer, "ees#@send#@") != 0)
                 {
@@ -140,20 +147,28 @@ void thread_process_read(void *arg)
 
                             //strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
                             mGetClientId(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")]);
-                            printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
+                            //printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
                             strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
-                            printf("receved source id:%s\r\n", msg_info[source_count].source_id);
-                            strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-                            printf("receved msg:%s\r\n", msg_info[source_count].messages);
+                            //printf("receved source id:%s\r\n", msg_info[source_count].source_id);
+                            strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + strlen(msg_info[source_count].dest_id) + 2]);
+                            //printf("receved msg:%s\r\n", msg_info[source_count].messages);
+                            //ees#@recvmsg#@source_id#@dest_id#@ok#@end
+                            memset(buffer, 0, sizeof(buffer));
+                            strcpy(buffer, "ees#@recvmsg#@");
+                            strcat(buffer, msg_info[source_count].source_id);
+                            strcat(buffer, "#@");
+                            strcat(buffer, msg_info[source_count].dest_id);
+                            strcat(buffer, "#@ok#@end");
+                            send(client_addr[client_count].sfd, buffer, strlen(buffer), 0);
                             msg_info[source_count].status = STATUS_CLIENT_SEND;
                             break;
                         }
                     }
-                    if(source_count == RECEVE_MAX_COUNT)
-                    {
+                    //if(source_count == RECEVE_MAX_COUNT)
+                    //{
                         //缓存条目已满，无法存储更多消息
-                        printf("msg buffer full!\r\n");
-                    }
+                        //printf("msg buffer full!\r\n");
+                    //}
                 }
             }
         }		
@@ -173,11 +188,11 @@ void thread_process_write(void *arg)
         {
             if(msg_info[client_count].status == STATUS_CLIENT_SEND)//判断是否有数据需要发送
             {
-                printf("dest id:%s\r\n", msg_info[client_count].dest_id);
-                printf("client id:");
+                //printf("dest id:%s\r\n", msg_info[client_count].dest_id);
+                //printf("client id:");
                 for(dest_count = 0; dest_count < 32; dest_count++)
                 {
-                    printf("%s-", client_addr[dest_count].client_id);
+                    //printf("%s-", client_addr[dest_count].client_id);
                     if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[client_count].dest_id) != 0)
                     {
                         msg_info[client_count].dest_fd = client_addr[dest_count].sfd;
@@ -193,11 +208,11 @@ void thread_process_write(void *arg)
                         break;
                     }
                 }
-                printf("\r\n");
-                if(dest_count >= 32)
-                {
-                    printf("not found dest\r\n");
-                }						
+                //printf("\r\n");
+                //if(dest_count >= 32)
+                //{
+                    //printf("not found dest\r\n");
+                //}						
             }
         }
         sleep(1);
@@ -244,7 +259,7 @@ int main(void)
         exit(1);
     }
 
-    printf("Waiting for client ...\n");
+    //printf("Waiting for client ...\n");
 
     ret = pthread_create(&thread_id1, NULL, (void *)thread_process_read, &fd);
     if(ret != 0)
@@ -252,7 +267,7 @@ int main(void)
         perror("pthread_create1\n");
         return -1;
     }
-    printf("pthread_create read thread status %d\n", ret);
+    //printf("pthread_create read thread status %d\n", ret);
 	
     ret = pthread_create(&thread_id2, NULL, (void *)thread_process_write, &fd);
     if(ret != 0)
@@ -260,7 +275,7 @@ int main(void)
         perror("pthread_create2\n");
         return -1;
     }
-    printf("pthread_create write thread status %d\n", ret);
+    //printf("pthread_create write thread status %d\n", ret);
     pthread_detach(thread_id1);
     pthread_detach(thread_id2);
 	
@@ -283,7 +298,7 @@ int main(void)
                     exit(1);
                 }
                 client_addr[client_count].sfd = fd;
-                printf("add a client online:%d\r\n", client_addr[client_count].sfd);
+                //printf("add a client online:%d\r\n", client_addr[client_count].sfd);
                 client_addr[client_count].status = STATUS_CLIENT_WORK;
             }
         }
