@@ -24,7 +24,7 @@ typedef struct
 {
     int status;//online or offline
     int sfd;
-    char client_id[16];
+    char client_id[17];
     struct sockaddr_in sockaddr;
 }_client_addr;
 
@@ -32,8 +32,8 @@ typedef struct
 {
     int status;//send data or idle
     int dest_fd;
-    char dest_id[16];
-    char source_id[16];
+    char dest_id[17];
+    char source_id[17];
     char messages[1024];
 }_msg_info;
 
@@ -41,6 +41,25 @@ _client_addr client_addr[32] = {0};//最大连接32个客户端
 _msg_info msg_info[RECEVE_MAX_COUNT] = {0};//最大缓存消息条数
 
 char buffer[2048] = {0};
+int mGetClientId(char *buffer, char *sourceid);
+
+int mGetClientId(char *buffer, char *sourceid)
+{
+    int i = 0;
+    int j = 0;
+    while(1)
+    {
+        if((sourceid[i] == '#') && (sourceid[i + 1] == '@'))
+        {
+            break;
+        }
+        buffer[j] = sourceid[i];
+        j++;
+        i++;
+    }
+    return 1;
+}
+
 void thread_process_read(void *arg)
 {
     int dest_count = 0;
@@ -103,7 +122,8 @@ void thread_process_read(void *arg)
                 {
                     //ees#@setid#@source_id#@end
                     memset(client_addr[client_count].client_id, 0, sizeof(client_addr[client_count].client_id));
-                    strncpy(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")], 16);
+                    mGetClientId(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")]);
+                    //strncpy(client_addr[client_count].client_id, &buffer[strlen("ees#@setid#@")], 16);
                     printf("receved setid:%s\r\n", client_addr[client_count].client_id);
                 }
                 else if(strstr((char *)buffer, "ees#@send#@") != 0)
@@ -118,12 +138,13 @@ void thread_process_read(void *arg)
                             memset(msg_info[source_count].source_id, 0, sizeof(msg_info[source_count].source_id));
                             memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
 
-                            strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
-							printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
+                            //strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
+                            mGetClientId(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")]);
+                            printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
                             strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
-							printf("receved source id:%s\r\n", msg_info[source_count].source_id);
+                            printf("receved source id:%s\r\n", msg_info[source_count].source_id);
                             strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-							printf("receved msg:%s\r\n", msg_info[source_count].messages);
+                            printf("receved msg:%s\r\n", msg_info[source_count].messages);
                             msg_info[source_count].status = STATUS_CLIENT_SEND;
                             break;
                         }
