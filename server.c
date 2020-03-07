@@ -119,11 +119,11 @@ void thread_process_read(void *arg)
                             memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
 
                             strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
-                            printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
+							printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
                             strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
-                            printf("receved source id:%s\r\n", msg_info[source_count].source_id);
+							printf("receved source id:%s\r\n", msg_info[source_count].source_id);
                             strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-                            printf("receved msg:%s\r\n", msg_info[source_count].messages);
+							printf("receved msg:%s\r\n", msg_info[source_count].messages);
                             msg_info[source_count].status = STATUS_CLIENT_SEND;
                             break;
                         }
@@ -152,8 +152,11 @@ void thread_process_write(void *arg)
         {
             if(msg_info[client_count].status == STATUS_CLIENT_SEND)//判断是否有数据需要发送
             {
+                printf("dest id:%s\r\n", msg_info[client_count].dest_id);
+                printf("client id:");
                 for(dest_count = 0; dest_count < 32; dest_count++)
                 {
+                    printf("%s-", client_addr[dest_count].client_id);
                     if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[client_count].dest_id) != 0)
                     {
                         msg_info[client_count].dest_fd = client_addr[dest_count].sfd;
@@ -169,7 +172,7 @@ void thread_process_write(void *arg)
                         break;
                     }
                 }
-
+                printf("\r\n");
                 if(dest_count >= 32)
                 {
                     printf("not found dest\r\n");
