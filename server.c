@@ -119,11 +119,11 @@ void thread_process_read(void *arg)
                             memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
 
                             strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
-							printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
+                            printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
                             strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
-							printf("receved source id:%s\r\n", msg_info[source_count].source_id);
+                            printf("receved source id:%s\r\n", msg_info[source_count].source_id);
                             strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
-							printf("receved msg:%s\r\n", msg_info[source_count].messages);
+                            printf("receved msg:%s\r\n", msg_info[source_count].messages);
                             msg_info[source_count].status = STATUS_CLIENT_SEND;
                             break;
                         }
