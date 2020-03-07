@@ -119,8 +119,11 @@ void thread_process_read(void *arg)
                             memset(msg_info[source_count].messages, 0, sizeof(msg_info[source_count].messages));
 
                             strncpy(msg_info[source_count].dest_id, &buffer[strlen("ees#@send#@")], 16);
+							printf("receved dest id:%s\r\n", msg_info[source_count].dest_id);
                             strcpy(msg_info[source_count].source_id, client_addr[client_count].client_id);
+							printf("receved source id:%s\r\n", msg_info[source_count].source_id);
                             strcpy(msg_info[source_count].messages, &buffer[strlen("ees#@send#@") + 18]);
+							printf("receved msg:%s\r\n", msg_info[source_count].messages);
                             msg_info[source_count].status = STATUS_CLIENT_SEND;
                             break;
                         }
@@ -140,7 +143,6 @@ void thread_process_write(void *arg)
 {
     int dest_count = 0;
     int client_count = 0;
-    int source_count = 0;
     int fd = *((int *)arg);
     int ret = 0;
 
@@ -152,9 +154,9 @@ void thread_process_write(void *arg)
             {
                 for(dest_count = 0; dest_count < 32; dest_count++)
                 {
-                    if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[source_count].dest_id) != 0)
+                    if(strstr((char *)client_addr[dest_count].client_id, (const char *)msg_info[client_count].dest_id) != 0)
                     {
-                        msg_info[source_count].dest_fd = client_addr[dest_count].sfd;
+                        msg_info[client_count].dest_fd = client_addr[dest_count].sfd;
                         //准备要发送的数据
                         //ees#@send#@source_id#@message#@end
                         memset(buffer, 0, sizeof(buffer));
